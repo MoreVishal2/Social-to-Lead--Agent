@@ -1,9 +1,3 @@
-"""
-tools/lead_capture.py
-Mock lead capture tool for AutoStream agent.
-Only called when all three fields (name, email, platform) are collected.
-"""
-
 import json
 from datetime import datetime
 
@@ -41,7 +35,6 @@ def mock_lead_capture(name: str, email: str, platform: str) -> dict:
     print(f"  Name      : {name}")
     print(f"  Email     : {email}")
     print(f"  Platform  : {platform}")
-    print(f"  Lead ID   : {lead_record['id']}")
     print(f"  Timestamp : {timestamp}")
     print(f"{'='*55}\n")
 

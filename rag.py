@@ -1,26 +1,14 @@
-"""
-agent/rag.py
-RAG (Retrieval-Augmented Generation) pipeline for AutoStream agent.
-Loads the local JSON knowledge base and builds a formatted context string
-that is injected into the LLM system prompt at runtime.
-"""
-
 import json
 from pathlib import Path
 
 
 def load_knowledge_base() -> dict:
-    """Load and return the AutoStream knowledge base from JSON."""
     kb_path = Path(__file__).parent / "autostream_kb.json"
     with open(kb_path, "r") as f:
         return json.load(f)
 
 
 def build_rag_context() -> str:
-    """
-    Convert the knowledge base into a structured text context
-    for injection into the LLM system prompt.
-    """
     kb = load_knowledge_base()
 
     company = kb["company"]
@@ -60,9 +48,4 @@ COMPANY POLICIES
 
 
 def retrieve_relevant_context(user_query: str) -> str:
-    """
-    Simple keyword-based retrieval to return the most relevant section.
-    For this project, we return the full KB context since it's compact.
-    In production, this would use vector similarity search (e.g., FAISS, Chroma).
-    """
     return build_rag_context()

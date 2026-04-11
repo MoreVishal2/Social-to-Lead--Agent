@@ -1,14 +1,3 @@
-"""
-main.py
-AutoStream AI Agent — CLI entry point.
-
-Run with:
-    python main.py
-
-Environment:
-    ANTHROPIC_API_KEY must be set in .env or as an environment variable.
-"""
-
 import sys
 from langchain_core.messages import HumanMessage
 from autostream_agent import build_graph, initial_state

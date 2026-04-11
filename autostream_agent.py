@@ -62,51 +62,6 @@ def get_llm():
 # ─────────────────────────────────────────────
 
 
-#def classify_intent(user_message: str) -> str:
-#    """
-#    Keyword-based intent classifier — zero LLM calls, zero token cost.
-#    Detects both explicit sign-up intent AND soft interest signals like
-#    "the pro is better" or "that sounds good" so the bot proactively
-#    moves into lead capture without waiting for a formal sign-up phrase.
-#    """
-#    msg = user_message.lower().strip()
-#
-#    explicit_keywords = [
-#        "sign up", "signup", "subscribe", "buy", "purchase","i want to sign", "i want to subscribe", "i want to buy","i want pro", "i want the pro", "i want basic", "i want the basic",
-#        "i want that plan", "i want this plan","i'd like to sign", "i'd like to subscribe","let's do it", "lets do it", "sign me up","i'm ready", "im ready", "onboard me",
-#        "register me", "get me started","sign up for pro", "sign up for basic","i'll take", "ill take", "i'll go with", "ill go with","i choose", "i pick",
-#    ]
-#    if any(k in msg for k in explicit_keywords):
-#        return "high_intent"
-#
-#    # ── Soft interest signals — user is leaning towards a plan ───────
-#    # Catches: "the pro is better", "that sounds good", "pro looks great",
-#    # "basic seems fine", "this is what i need", "i like the pro" etc.
-#    interest_positive = [
-#        "sounds good","sounds better", "sounds much better", "sounds even better",
-#        "looks better", "looks much better", "much better", "even better", "way better", "far better", "sounds great", "sounds perfect", "sounds nice", "looks good", "looks great", "looks perfect", "seems good", "seems great", "seems perfect", "seems fine",
-#        "is better", "is great", "is perfect", "is amazing", "is awesome","is what i need", "is exactly", "is ideal","i like the pro", "i like the basic", "i prefer the pro", "i prefer the basic",
-#        "pro is better", "pro sounds", "pro looks", "pro seems","basic is fine", "basic sounds", "basic looks", "basic seems","basic is good", "basic is great", "basic is perfect",
-#        "pro is good", "pro is great","is good", "that's good", "thats good", "that is good","good enough", "good for me", "works for me", "works well",
-#        "that's what i", "thats what i", "this is what i","i'm interested", "im interested", "i am interested","i'll go with", "ill go with", "i think pro", "i think basic",
-#        "perfect for me", "good for me", "right for me", "suits me","i need the pro", "i need the basic", "i want the pro", "i want the basic",
-#    ]
-#    if any(k in msg for k in interest_positive):
-#        return "high_intent"
-#
-#    # ── Greeting signals ─────────────────────────────────────────────
-#    greeting_keywords = [
-#        "hi", "hello", "hey", "howdy", "good morning", "good evening",
-#        "good afternoon", "what's up", "whats up", "sup", "greetings"
-#    ]
-#    if any(msg == k or msg.startswith(k + " ") or msg.startswith(k + ",") for k in greeting_keywords):
-#        return "greeting"
-#
-#    # Default: treat everything else as a product question
-#    return "product_qa"
-
-
-
 # ── Intent examples — what each intent "sounds like" ──────────────
 INTENT_EXAMPLES = {
     "greeting": [
@@ -300,10 +255,10 @@ def respond_node(state: AgentState) -> dict:
         if name and email and platform and not state.get("lead_captured"):
             result = mock_lead_capture(name, email, platform)
             reply = (
-                        f"🎉 You're all set, **{name}**!\n\n"
-                        f"Thank you for taking interest in AutoStream. "
+                        f"🎉 You're all set, **{name}**!\n"
+                        f"Welcome to AutoStream! 🚀\n"
                         f"We will reach out to you shortly.\n\n"
-                        f"Welcome to AutoStream! 🚀"
+                        f"Thank you for taking interest in AutoStream. "
                     )
             
 
