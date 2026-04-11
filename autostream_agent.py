@@ -1,19 +1,10 @@
-"""
-agent/autostream_agent.py
-AutoStream Conversational AI Agent built with LangGraph.
-
-Architecture:
-- LangGraph StateGraph manages conversation flow and state transitions
-- Gemini 1.5 Flash is the LLM backbone (via Google GenerativeAI API)
-- RAG pipeline injects knowledge base context into every turn
-- Intent classifier routes: greeting → product_qa → lead_capture
-- Lead capture tool fires ONLY when name + email + platform are all collected
-"""
-
 import os
 import re
+import numpy as np
 from typing import Annotated, TypedDict, Optional
 from dotenv import load_dotenv
+
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
@@ -31,14 +22,10 @@ load_dotenv()
 # ─────────────────────────────────────────────
 
 class AgentState(TypedDict):
-    """
-    Persistent state carried across all conversation turns.
-    LangGraph merges updates via the annotated reducer functions.
-    """
     messages: Annotated[list, add_messages]   # Full conversation history
 
     # Intent tracking
-    current_intent: str                        # greeting | product_qa | lead_capture | done
+    current_intent: str    # greeting | product_qa | lead_capture | done
 
     # Lead capture fields (populated one at a time)
     lead_name: Optional[str]
@@ -75,50 +62,121 @@ def get_llm():
 # ─────────────────────────────────────────────
 
 
+#def classify_intent(user_message: str) -> str:
+#    """
+#    Keyword-based intent classifier — zero LLM calls, zero token cost.
+#    Detects both explicit sign-up intent AND soft interest signals like
+#    "the pro is better" or "that sounds good" so the bot proactively
+#    moves into lead capture without waiting for a formal sign-up phrase.
+#    """
+#    msg = user_message.lower().strip()
+#
+#    explicit_keywords = [
+#        "sign up", "signup", "subscribe", "buy", "purchase","i want to sign", "i want to subscribe", "i want to buy","i want pro", "i want the pro", "i want basic", "i want the basic",
+#        "i want that plan", "i want this plan","i'd like to sign", "i'd like to subscribe","let's do it", "lets do it", "sign me up","i'm ready", "im ready", "onboard me",
+#        "register me", "get me started","sign up for pro", "sign up for basic","i'll take", "ill take", "i'll go with", "ill go with","i choose", "i pick",
+#    ]
+#    if any(k in msg for k in explicit_keywords):
+#        return "high_intent"
+#
+#    # ── Soft interest signals — user is leaning towards a plan ───────
+#    # Catches: "the pro is better", "that sounds good", "pro looks great",
+#    # "basic seems fine", "this is what i need", "i like the pro" etc.
+#    interest_positive = [
+#        "sounds good","sounds better", "sounds much better", "sounds even better",
+#        "looks better", "looks much better", "much better", "even better", "way better", "far better", "sounds great", "sounds perfect", "sounds nice", "looks good", "looks great", "looks perfect", "seems good", "seems great", "seems perfect", "seems fine",
+#        "is better", "is great", "is perfect", "is amazing", "is awesome","is what i need", "is exactly", "is ideal","i like the pro", "i like the basic", "i prefer the pro", "i prefer the basic",
+#        "pro is better", "pro sounds", "pro looks", "pro seems","basic is fine", "basic sounds", "basic looks", "basic seems","basic is good", "basic is great", "basic is perfect",
+#        "pro is good", "pro is great","is good", "that's good", "thats good", "that is good","good enough", "good for me", "works for me", "works well",
+#        "that's what i", "thats what i", "this is what i","i'm interested", "im interested", "i am interested","i'll go with", "ill go with", "i think pro", "i think basic",
+#        "perfect for me", "good for me", "right for me", "suits me","i need the pro", "i need the basic", "i want the pro", "i want the basic",
+#    ]
+#    if any(k in msg for k in interest_positive):
+#        return "high_intent"
+#
+#    # ── Greeting signals ─────────────────────────────────────────────
+#    greeting_keywords = [
+#        "hi", "hello", "hey", "howdy", "good morning", "good evening",
+#        "good afternoon", "what's up", "whats up", "sup", "greetings"
+#    ]
+#    if any(msg == k or msg.startswith(k + " ") or msg.startswith(k + ",") for k in greeting_keywords):
+#        return "greeting"
+#
+#    # Default: treat everything else as a product question
+#    return "product_qa"
+
+
+
+# ── Intent examples — what each intent "sounds like" ──────────────
+INTENT_EXAMPLES = {
+    "greeting": [
+        "hi", "hello", "hey there", "good morning", "what's up",
+        "howdy", "greetings", "hi there"
+    ],
+    "product_qa": [
+        "what are your plans", "tell me about pricing",
+        "how much does it cost", "what features do you have",
+        "what is the refund policy", "explain the basic plan",
+        "what is included in pro", "how does it work",
+        "what is the difference between plans"
+    ],
+    "high_intent": [
+        "i want to sign up", "sign me up", "i'll take the pro plan",
+        "this looks great i want it", "the pro plan sounds perfect for me",
+        "basic is good for me", "i am interested in subscribing",
+        "let's get started", "i want the pro", "sounds good i'm in",
+        "the pro is better i want that", "that works for me",
+        "i'm ready to get started", "i want to try it"
+    ]
+}
+
+_embedder = None
+_intent_embeddings = None
+
+def _get_embedder():
+    global _embedder
+    if _embedder is None:
+        _embedder = GoogleGenerativeAIEmbeddings(
+            model="models/gemini-embedding-001",
+            google_api_key=os.getenv("GOOGLE_API_KEY")
+        )
+    return _embedder
+
+def _build_intent_embeddings():
+    global _intent_embeddings
+    if _intent_embeddings is not None:
+        return
+    embedder = _get_embedder()
+    _intent_embeddings = {}
+    for intent, examples in INTENT_EXAMPLES.items():
+        vecs = embedder.embed_documents(examples)
+        # Store the mean vector for this intent
+        _intent_embeddings[intent] = np.mean(vecs, axis=0)
+
 def classify_intent(user_message: str) -> str:
     """
-    Keyword-based intent classifier — zero LLM calls, zero token cost.
-    Detects both explicit sign-up intent AND soft interest signals like
-    "the pro is better" or "that sounds good" so the bot proactively
-    moves into lead capture without waiting for a formal sign-up phrase.
+    Semantic intent classifier using cosine similarity.
+    Understands meaning — handles typos, indirect phrasing,
+    and unusual word choices without any keyword lists.
     """
-    msg = user_message.lower().strip()
+    _build_intent_embeddings()
+    embedder = _get_embedder()
 
-    # ── Explicit sign-up intent ──────────────────────────────────────
-    explicit_keywords = [
-        "sign up", "signup", "subscribe", "buy", "purchase","i want to sign", "i want to subscribe", "i want to buy","i want pro", "i want the pro", "i want basic", "i want the basic",
-        "i want that plan", "i want this plan","i'd like to sign", "i'd like to subscribe","let's do it", "lets do it", "sign me up","i'm ready", "im ready", "onboard me",
-        "register me", "get me started","sign up for pro", "sign up for basic","i'll take", "ill take", "i'll go with", "ill go with","i choose", "i pick",
-    ]
-    if any(k in msg for k in explicit_keywords):
-        return "high_intent"
+    user_vec = np.array(embedder.embed_query(user_message))
 
-    # ── Soft interest signals — user is leaning towards a plan ───────
-    # Catches: "the pro is better", "that sounds good", "pro looks great",
-    # "basic seems fine", "this is what i need", "i like the pro" etc.
-    interest_positive = [
-        "sounds good","sounds better", "sounds much better", "sounds even better",
-        "looks better", "looks much better", "much better", "even better", "way better", "far better", "sounds great", "sounds perfect", "sounds nice", "looks good", "looks great", "looks perfect", "seems good", "seems great", "seems perfect", "seems fine",
-        "is better", "is great", "is perfect", "is amazing", "is awesome","is what i need", "is exactly", "is ideal","i like the pro", "i like the basic", "i prefer the pro", "i prefer the basic",
-        "pro is better", "pro sounds", "pro looks", "pro seems","basic is fine", "basic sounds", "basic looks", "basic seems","basic is good", "basic is great", "basic is perfect",
-        "pro is good", "pro is great","is good", "that's good", "thats good", "that is good","good enough", "good for me", "works for me", "works well",
-        "that's what i", "thats what i", "this is what i","i'm interested", "im interested", "i am interested","i'll go with", "ill go with", "i think pro", "i think basic",
-        "perfect for me", "good for me", "right for me", "suits me","i need the pro", "i need the basic", "i want the pro", "i want the basic",
-    ]
-    if any(k in msg for k in interest_positive):
-        return "high_intent"
+    best_intent = "product_qa"
+    best_score = -1
 
-    # ── Greeting signals ─────────────────────────────────────────────
-    greeting_keywords = [
-        "hi", "hello", "hey", "howdy", "good morning", "good evening",
-        "good afternoon", "what's up", "whats up", "sup", "greetings"
-    ]
-    if any(msg == k or msg.startswith(k + " ") or msg.startswith(k + ",") for k in greeting_keywords):
-        return "greeting"
+    for intent, intent_vec in _intent_embeddings.items():
+        # Cosine similarity
+        score = np.dot(user_vec, intent_vec) / (
+            np.linalg.norm(user_vec) * np.linalg.norm(intent_vec)
+        )
+        if score > best_score:
+            best_score = score
+            best_intent = intent
 
-    # Default: treat everything else as a product question
-    return "product_qa"
-
+    return best_intent
 
 # ─────────────────────────────────────────────
 #  HELPER: EXTRACT LEAD FIELDS FROM FREE TEXT
@@ -147,11 +205,6 @@ def extract_platform(text: str) -> Optional[str]:
 # ─────────────────────────────────────────────
 
 def classify_node(state: AgentState) -> dict:
-    """
-    Node 1 – Intent Classification
-    Reads the latest human message and sets current_intent.
-    If already in lead_capture mode, preserve that intent.
-    """
     last_human = next(
         (m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
         "",
@@ -182,11 +235,8 @@ def classify_node(state: AgentState) -> dict:
     return {"current_intent": intent}
 
 
+
 def respond_node(state: AgentState) -> dict:
-    """
-    Node 2 – Response Generation
-    Generates a reply based on current intent and conversation state.
-    """
     llm = get_llm()
     rag_context = retrieve_relevant_context("")
     intent = state.get("current_intent", "product_qa")
@@ -265,7 +315,6 @@ def respond_node(state: AgentState) -> dict:
 
 
 
-
         # Determine which field to ask for next
         if not name:
             # Detect which plan the user mentioned, if any
@@ -277,16 +326,23 @@ def respond_node(state: AgentState) -> dict:
             else:
                 plan_mention = "an AutoStream plan"
             reply = (
-                f"Great choice! 🎬 It sounds like you're interested in {plan_mention}.\n\n"
-                "Would you like me to get you set up? If yes, just share your **full name** and I'll take it from there!"
+                f"Great choice! 🎬 It sounds like you're interested in {plan_mention}.\n"
+                "Would you like me to get you set up? If yes, just share your **full name**!"
             )
             updates["awaiting_field"] = "name"
-        elif not email:
-            reply = (
-                f"Great to meet you, **{name}**! 👋\n\n"
-                "What's the best **email address** to send your sign-up link to?"
-            )
-            updates["awaiting_field"] = "email"
+        elif not email:        
+                extracted = extract_email(last_human)
+                if awaiting == "email" and not extracted:
+                    # User already tried but gave invalid email
+                    reply = (f"Hmm, that doesn't look like a valid email address. 🤔\n\n"
+                        f"Please enter a valid email in the format **name@example.com** so we can reach you.")
+                else:
+                    reply = (f"Great to meet you, **{name}**! 👋\n\n"
+                        "What's the best **email address** to send your sign-up link to?")
+                updates["awaiting_field"] = "email"
+
+
+
         elif not platform:
             reply = (
                 "Almost there! Which **creator platform** do you primarily post on? "
@@ -322,11 +378,6 @@ IMPORTANT: If asked about plans, always mention BOTH plans with their exact pric
 
 
 def router(state: AgentState) -> str:
-    """
-    Conditional edge: decide which node to visit next.
-    Always loops through classify → respond for every human turn.
-    """
-    # After "done" we still respond (to say goodbye etc.) but don't re-classify
     return "respond"
 
 
