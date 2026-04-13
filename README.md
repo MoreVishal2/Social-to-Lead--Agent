@@ -36,7 +36,7 @@ python main.py
 
 ---
 
-## Architecture Explanation (~200 words)
+## Architecture
 
 LangGraph was chosen over AutoGen because it provides explicit, inspectable state machines. It allows you to define exactly what happens in each node and when edges are triggered. This maps cleanly onto the requirement of a classify → respond loop with a strictly guarded tool call.
 

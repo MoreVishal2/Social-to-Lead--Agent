@@ -14,7 +14,6 @@ def build_rag_context() -> str:
     company = kb["company"]
     pricing = kb["pricing"]
     policies = kb["policies"]
-
     basic = pricing["basic_plan"]
     pro = pricing["pro_plan"]
 
